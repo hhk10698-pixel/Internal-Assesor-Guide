@@ -204,79 +204,6 @@ STATE_CODE_TO_STATE = {
     "PY": "Puducherry",
 }
 
-COLUMN_ALIASES = {
-    "Sno.": [
-        "sno",
-        "s no",
-        "s no.",
-        "sr no",
-        "sr. no",
-        "serial no",
-        "serial number",
-        "sl no",
-        "sl. no",
-    ],
-    "State": ["state", "name of state", "state name", "state ut", "state/ut"],
-    "district": [
-        "district",
-        "district name",
-        "name of district",
-        "district facility",
-        "district / facility",
-    ],
-    "Aspirational Block Name": [
-        "aspirational block name",
-        "aspirational block",
-        "name of aspirational block",
-        "block name",
-    ],
-    "Name": [
-        "name",
-        "participant name",
-        "participants name",
-        "name of the participant",
-        "assessor name",
-        "participant",
-    ],
-    "Designation": ["designation", "post", "cadre"],
-    "Place of posting": [
-        "place of posting",
-        "name of facility",
-        "facility name",
-        "place posting",
-        "posting place",
-        "facility",
-    ],
-    "Mobile no.": [
-        "mobile no",
-        "mobile number",
-        "mobile",
-        "phone number",
-        "phone no",
-        "contact number",
-        "contact no",
-    ],
-    "email": ["email", "email id", "e mail id", "e-mail", "mail id"],
-    "score": [
-        "score",
-        "marks",
-        "marks obtained",
-        "obtained marks",
-        "score out of 40",
-    ],
-    "Total Marks": ["total marks", "maximum marks", "max marks", "marks out of"],
-    "Percentage": ["percentage", "percent", "score %", "% score", "percentage %"],
-    "result": ["result", "status", "remark", "remarks"],
-    "Certificate No.": [
-        "certificate",
-        "certificate no",
-        "certificate number",
-        "certificates",
-        "cert no",
-    ],
-    "Assessment Year": ["year", "assessment year", "batch year"],
-}
-
 HEADER_SIGNALS = [
     "s no",
     "serial no",
@@ -489,26 +416,6 @@ def candidate_header_rows(preview_df):
     return deduped[:12]
 
 
-def find_matching_column(columns, aliases, avoid_percent=False):
-    normalized_columns = {col: normalize_text(col) for col in columns}
-    normalized_aliases = [normalize_text(alias) for alias in aliases]
-
-    for alias in normalized_aliases:
-        for column_name, norm_name in normalized_columns.items():
-            if norm_name == alias:
-                if avoid_percent and ("percent" in norm_name or "%" in str(column_name)):
-                    continue
-                return column_name
-
-    for alias in normalized_aliases:
-        for column_name, norm_name in normalized_columns.items():
-            if alias and alias in norm_name:
-                if avoid_percent and ("percent" in norm_name or "%" in str(column_name)):
-                    continue
-                return column_name
-    return None
-
-
 def _select_best_column(normalized_columns, used_columns, exact_aliases=None, contains_aliases=None, excludes=None):
     exact_aliases = [normalize_text(a) for a in (exact_aliases or [])]
     contains_aliases = [normalize_text(a) for a in (contains_aliases or [])]
@@ -649,26 +556,6 @@ def resolve_standard_columns(dataframe):
         "Certificate No.": cert_col,
         "Assessment Year": year_col,
     }
-
-
-def read_sheet_with_detected_header(file_path, sheet_name):
-    if file_path.suffix.lower() == ".csv":
-        preview = pd.read_csv(file_path, header=None, nrows=60, dtype="string", on_bad_lines="skip")
-        header_row = detect_header_row(preview)
-        if header_row is None:
-            return pd.DataFrame()
-        return pd.read_csv(
-            file_path,
-            header=header_row,
-            dtype="string",
-            on_bad_lines="skip",
-        )
-
-    preview = pd.read_excel(file_path, sheet_name=sheet_name, header=None, nrows=60, dtype="string")
-    header_row = detect_header_row(preview)
-    if header_row is None:
-        return pd.DataFrame()
-    return pd.read_excel(file_path, sheet_name=sheet_name, header=header_row, dtype="string")
 
 
 def read_sheet_candidates(file_path, sheet_name):
@@ -1038,75 +925,14 @@ def rerun_app():
         st.experimental_rerun()
 
 
-def resolve_data_root():
-    candidates = []
-    env_path = os.getenv("NQAS_DATA_ROOT", "").strip()
-    if env_path:
-        candidates.append(("Environment Variable", Path(env_path)))
-
-    try:
-        secret_path = str(st.secrets.get("NQAS_DATA_ROOT", "")).strip()
-    except Exception:
-        secret_path = ""
-    if secret_path:
-        candidates.append(("Streamlit Secret", Path(secret_path)))
-
-    candidates.append(("Local Default", DEFAULT_LOCAL_DATA_ROOT))
-
-    for label, path in candidates:
-        if path.exists():
-            return path, f"{label}: {path}", True
-
-    if candidates:
-        label, path = candidates[0]
-        return path, f"{label}: {path}", False
-    return DEFAULT_LOCAL_DATA_ROOT, f"Local Default: {DEFAULT_LOCAL_DATA_ROOT}", False
-
-
-def resolve_remote_zip_url():
-    env_zip_url = os.getenv("NQAS_DATA_ZIP_URL", "").strip()
-    if env_zip_url:
-        return env_zip_url, "Environment Variable"
-    try:
-        secret_zip_url = str(st.secrets.get("NQAS_DATA_ZIP_URL", "")).strip()
-    except Exception:
-        secret_zip_url = ""
-    if secret_zip_url:
-        return secret_zip_url, "Streamlit Secret"
-    return "", ""
-
-
-def write_uploaded_files_to_temp(uploaded_files, uploaded_zip):
-    temp_dir = Path(tempfile.mkdtemp(prefix="nqas_streamlit_data_"))
-
-    if uploaded_zip is not None:
-        zip_target = temp_dir / uploaded_zip.name
-        zip_target.write_bytes(uploaded_zip.getbuffer())
-        with zipfile.ZipFile(zip_target, "r") as zip_ref:
-            zip_ref.extractall(temp_dir)
-
-    for uploaded in uploaded_files:
-        target_path = temp_dir / uploaded.name
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        target_path.write_bytes(uploaded.getbuffer())
-
-    return temp_dir
-
-
-def write_remote_zip_to_temp(zip_url):
-    temp_dir = Path(tempfile.mkdtemp(prefix="nqas_streamlit_data_"))
-    zip_target = temp_dir / "remote_data.zip"
-    with urlopen(zip_url, timeout=120) as response:
-        zip_target.write_bytes(response.read())
-    with zipfile.ZipFile(zip_target, "r") as zip_ref:
-        zip_ref.extractall(temp_dir)
-    return temp_dir
-
+# --- STREAMLIT UI ---
 
 st.title("Internal Assessment Dashboard")
 
-active_data_root, data_source_label, data_root_exists = resolve_data_root()
-st.caption(f"Data source: `{data_source_label}`")
+active_data_root = DEFAULT_LOCAL_DATA_ROOT
+data_source_label = "Local Data Folder"
+
+st.caption(f"Data source: `{active_data_root}`")
 
 if st_autorefresh is not None:
     st_autorefresh(interval=120000, key="ia_data_refresh")
@@ -1118,61 +944,12 @@ if st.sidebar.button("Refresh Data Now"):
     st.cache_data.clear()
     rerun_app()
 
-if not data_root_exists:
-    st.warning(
-        "Configured folder is not available in this environment. "
-        "On Streamlit Cloud, local Windows paths are not accessible."
-    )
-    remote_zip_url, remote_zip_source = resolve_remote_zip_url()
-    if "manual_remote_zip_url" not in st.session_state:
-        st.session_state["manual_remote_zip_url"] = ""
+if not active_data_root.exists():
+    st.error(f"Error: The configured directory `{active_data_root}` does not exist or is inaccessible.")
+    st.info("Please make sure the folder path is correct and accessible on this machine.")
+    st.stop()
 
-    manual_zip_url = st.text_input(
-        "Remote Data ZIP URL (optional)",
-        placeholder="https://example.com/nqas-data.zip",
-        key="manual_remote_zip_url",
-    ).strip()
-
-    load_from_manual_url = st.button("Load From URL")
-    if load_from_manual_url and manual_zip_url:
-        remote_zip_url = manual_zip_url
-        remote_zip_source = "Manual Input"
-    elif manual_zip_url and not remote_zip_url:
-        remote_zip_url = manual_zip_url
-        remote_zip_source = "Manual Input"
-
-    if remote_zip_url:
-        st.caption(f"Detected remote ZIP source: {remote_zip_source}")
-        st.caption(f"Remote ZIP URL received length: {len(remote_zip_url)}")
-    else:
-        st.caption("No remote ZIP URL detected from env/secrets/manual input.")
-    if remote_zip_url:
-        try:
-            active_data_root = write_remote_zip_to_temp(remote_zip_url)
-            st.caption(
-                f"Using remote ZIP from {remote_zip_source}. "
-                f"Temporary extraction path: `{active_data_root}`"
-            )
-        except Exception as remote_error:
-            st.error(f"Failed to load remote ZIP: {remote_error}")
-            st.info("If this is a Google Drive/OneDrive link, make sure it is a direct-download ZIP URL.")
-            st.stop()
-    else:
-        st.markdown(
-            "Upload a `.zip` of your data folder, or upload multiple result files directly."
-        )
-        uploaded_zip = st.file_uploader("Upload Data ZIP", type=["zip"])
-        uploaded_files = st.file_uploader(
-            "Or upload result files",
-            type=["xlsx", "xls", "xlsm", "csv"],
-            accept_multiple_files=True,
-        )
-        if uploaded_zip is None and not uploaded_files:
-            st.info("Waiting for files.")
-            st.stop()
-        active_data_root = write_uploaded_files_to_temp(uploaded_files or [], uploaded_zip)
-        st.caption(f"Using uploaded files from temporary path: `{active_data_root}`")
-
+# Build signature and compile data directly from the local root
 signature = build_data_signature(active_data_root)
 compiled_df, parse_errors, total_files, files_read, parsed_files = compile_assessment_data(
     str(active_data_root), signature
